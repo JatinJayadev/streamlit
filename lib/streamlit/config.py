@@ -25,6 +25,7 @@ import secrets
 import threading
 from collections import OrderedDict
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from streamlit import config_util, development, env_util, file_util, util
@@ -429,11 +430,23 @@ def _global_development_mode() -> bool:
     This option defaults to True if and only if Streamlit wasn't installed
     normally.
     """
+    return not env_util.is_pex() and _is_streamlit_source_checkout()
+
+
+def _is_streamlit_source_checkout() -> bool:
+    config_path = Path(__file__).resolve()
+    streamlit_dir = config_path.parent
+    lib_dir = streamlit_dir.parent
+    repo_root = lib_dir.parent
+
     return (
-        not env_util.is_pex()
-        and "site-packages" not in __file__
-        and "dist-packages" not in __file__
-        and "__pypackages__" not in __file__
+        config_path.name == "config.py"
+        and streamlit_dir.name == "streamlit"
+        and lib_dir.name == "lib"
+        and (repo_root / "pyproject.toml").is_file()
+        and (repo_root / "Makefile").is_file()
+        and (repo_root / "frontend" / "package.json").is_file()
+        and (lib_dir / "pyproject.toml").is_file()
     )
 
 
@@ -3099,14 +3112,21 @@ def _check_conflicts() -> None:
     logger: Final = get_logger(__name__)
 
     if get_option("global.developmentMode"):
-        if not _is_unset("server.port"):
+        if not _is_unset("server.port") and get_option("server.port") != 8501:
             raise RuntimeError(
-                "server.port does not work when global.developmentMode is true."
+                "server.port does not work when global.developmentMode is true. "
+                "Remove server.port from your config, set it to 8501, or run "
+                "with global.developmentMode=false."
             )
 
-        if not _is_unset("browser.serverPort"):
+        if (
+            not _is_unset("browser.serverPort")
+            and get_option("browser.serverPort") != 8501
+        ):
             raise RuntimeError(
-                "browser.serverPort does not work when global.developmentMode is true."
+                "browser.serverPort does not work when global.developmentMode is true. "
+                "Remove browser.serverPort from your config, set it to 8501, or run "
+                "with global.developmentMode=false."
             )
 
     # Tell the operator when Streamlit does not limit cross-origin access.
