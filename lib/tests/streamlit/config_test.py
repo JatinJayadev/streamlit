@@ -849,9 +849,15 @@ class ConfigTest(unittest.TestCase):
         config._set_option("server.port", 1234, "test")
         with pytest.raises(
             RuntimeError,
-            match=r"server.port does not work when global.developmentMode is true.",
+            match=r"Remove server.port from your config",
         ):
             config._check_conflicts()
+
+    def test_check_conflicts_server_port_allows_default_port_in_development_mode(self):
+        config._set_option("global.developmentMode", True, "test")
+        config._set_option("server.port", 8501, "test")
+
+        config._check_conflicts()
 
     @patch("streamlit.logger.get_logger")
     def test_check_conflicts_cors_disabled_does_not_claim_an_override(self, get_logger):
@@ -1005,9 +1011,17 @@ class ConfigTest(unittest.TestCase):
         config._set_option("browser.serverPort", 1234, "test")
         with pytest.raises(
             RuntimeError,
-            match=r"browser.serverPort does not work when global.developmentMode is true.",
+            match=r"Remove browser.serverPort from your config",
         ):
             config._check_conflicts()
+
+    def test_check_conflicts_browser_serverport_allows_default_port_in_development_mode(
+        self,
+    ):
+        config._set_option("global.developmentMode", True, "test")
+        config._set_option("browser.serverPort", 8501, "test")
+
+        config._check_conflicts()
 
     def test_parse_trusted_user_headers_handles_bad_json(self):
         # JSON that fails to parse.
@@ -1561,6 +1575,35 @@ class ConfigTest(unittest.TestCase):
     def test_global_dev_mode(self):
         config.set_option("global.developmentMode", True)
         assert config.get_option("global.developmentMode")
+
+    def test_is_streamlit_source_checkout(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.makedirs(os.path.join(temp_dir, "lib", "streamlit"))
+            os.makedirs(os.path.join(temp_dir, "frontend"))
+
+            config_path = os.path.join(temp_dir, "lib", "streamlit", "config.py")
+            for path in [
+                config_path,
+                os.path.join(temp_dir, "pyproject.toml"),
+                os.path.join(temp_dir, "Makefile"),
+                os.path.join(temp_dir, "frontend", "package.json"),
+                os.path.join(temp_dir, "lib", "pyproject.toml"),
+            ]:
+                with open(path, "w", encoding="utf-8"):
+                    pass
+
+            with patch.object(config, "__file__", config_path):
+                assert config._is_streamlit_source_checkout()
+
+    def test_is_streamlit_source_checkout_rejects_target_install(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.makedirs(os.path.join(temp_dir, "pkgs", "streamlit"))
+            config_path = os.path.join(temp_dir, "pkgs", "streamlit", "config.py")
+            with open(config_path, "w", encoding="utf-8"):
+                pass
+
+            with patch.object(config, "__file__", config_path):
+                assert not config._is_streamlit_source_checkout()
 
     def test_global_log_level_debug(self):
         config.set_option("global.developmentMode", True)
